@@ -12,7 +12,7 @@ import android.widget.ImageView;
 import android.widget.Toast;
 
 import com.nmn.example.mqtt.R;
-import com.nmn.example.mqtt.model.MessageEvent;
+import com.nmn.example.mqtt.events.MessageEvent;
 import com.nmn.example.mqtt.utils.CommonUtil;
 
 import de.greenrobot.event.EventBus;

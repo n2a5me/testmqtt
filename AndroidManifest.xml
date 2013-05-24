@@ -7,9 +7,11 @@
     <uses-sdk android:minSdkVersion="8" />
     <uses-permission android:name="android.permission.INTERNET"/>
 	<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+	<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>"
     <application
         android:icon="@drawable/ic_launcher"
-        android:label="@string/app_name" >
+        android:label="@string/app_name"
+        android:name="com.nmn.example.mqtt.UIApplication" >
         <activity
             android:name="com.nmn.example.mqtt.MQTTActivity"
             android:label="@string/app_name" >
@@ -19,6 +21,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+         <service android:name="com.nmn.example.mqtt.MQTTService" >
+<!--             <intent-filter> -->
+<!--                 <action android:name="com.nmn.example.mqtt.chat" /> -->
+<!--             </intent-filter> -->
+        </service>
     </application>
 
 </manifest>

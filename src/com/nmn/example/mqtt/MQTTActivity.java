@@ -16,6 +16,7 @@ import org.fusesource.mqtt.client.Topic;
 import android.app.Activity;
 import android.app.ProgressDialog;
 import android.content.Context;
+import android.content.Intent;
 import android.content.pm.ActivityInfo;
 import android.os.Bundle;
 import android.os.Handler;
@@ -36,9 +37,12 @@ import android.widget.Toast;
 
 import com.nmn.example.mqtt.adapter.EmoticonsAdapter;
 import com.nmn.example.mqtt.adapter.ListChatAdapter;
-import com.nmn.example.mqtt.model.MessageEvent;
+import com.nmn.example.mqtt.events.CommonEvent;
+import com.nmn.example.mqtt.events.MessageEvent;
+import com.nmn.example.mqtt.events.ReceivedMessageEvent;
 import com.nmn.example.mqtt.model.User;
 import com.nmn.example.mqtt.utils.CommonUtil;
+import com.nmn.example.mqtt.utils.Constants;
 
 import de.greenrobot.event.EventBus;
 
@@ -78,25 +82,34 @@ public class MQTTActivity extends Activity implements OnClickListener{
         users=new ArrayList<User>();
         mqtt = new MQTT();
         connection = mqtt.futureConnection();
-        clientId = String.format("%-23.23s",System.getProperty("user.name") + "_" +
+        UIApplication myapp=(UIApplication)getApplication();
+        if(myapp.getClientId()!=null)
+        {
+        	clientId=myapp.getClientId();
+        }else
+        {
+        	clientId = String.format("%-23.23s",System.getProperty("user.name") + "_" +
 			      (UUID.randomUUID().toString())).trim().replace('-', '_');
+        	Log.e("getClientIdFromApplication","N/A");
+        }
         adapter=new ListChatAdapter(this, users, clientId);
         setupView();
         timer=new Timer();
-        timer.schedule(new TimerTask() {
-			
-			@Override
-			public void run() {
-				// TODO Auto-generated method stub
-				checkMessages();
-			}
-		}, 1000,1000);
+//        timer.schedule(new TimerTask() {
+//			
+//			@Override
+//			public void run() {
+//				// TODO Auto-generated method stub
+//				checkMessages();
+//			}
+//		}, 1000,1000);
     }
     
     @Override
     public void onPause()
     {
     	super.onPause();
+    	EventBus.getDefault().post(new CommonEvent.UINotActiveEvent());
     	EventBus.getDefault().unregister(this);
     	disconnect();
     }
@@ -125,6 +138,7 @@ public class MQTTActivity extends Activity implements OnClickListener{
 //			return;
 //		}
 //    	retryConnect();
+    	EventBus.getDefault().post(new CommonEvent.UIActiveEvent());
     	Log.e("OnResume","On resume...");
     }
     @Override
@@ -165,6 +179,36 @@ public class MQTTActivity extends Activity implements OnClickListener{
 //			}
 //		}, 500);
 	}
+    public void onEventMainThread(CommonEvent.SuccessConnectEvent event)
+    {
+    	Intent startService=new Intent(this,MQTTService.class);
+    	startService.setAction(Constants.SERVICE_ACTIONs.START_TOPIC.toString());
+    	Bundle bundle=new Bundle();
+    	bundle.putString("topic_name", sTOPIC);
+    	startService.putExtras(bundle);
+    	startService(startService);
+    }
+    public void onEventMainThread(ReceivedMessageEvent event){
+		Log.e("onEventMainThread", "ReceivedMessageEvent");
+		String messagePayLoad=event.getMes();
+		User userItem=new User();
+		userItem.setName(CommonUtil.extractMessage(messagePayLoad, false));
+		userItem.setDatetime(CommonUtil.getCurrentDate());
+		
+		if(CommonUtil.isEmo(messagePayLoad))
+		{
+			userItem.setSentEmo(true);
+			userItem.setEmoResource(Integer.parseInt(CommonUtil.extractEmoMessage(messagePayLoad, false)));
+			userItem.setEmoGroup(Integer.parseInt(CommonUtil.extractEmoMessage(messagePayLoad, true)));
+			userItem.setMessage(messagePayLoad);
+		}else
+		{
+			userItem.setMessage(CommonUtil.extractMessage(messagePayLoad, true));
+		}
+		users.add(userItem);
+		adapter.notifyDataSetChanged();
+		listChat.setSelection(users.size()-1);
+	}
 	public void retryConnect() {
 		mqtt = new MQTT();
 		mqtt.setClientId(clientId);
@@ -199,6 +243,7 @@ public class MQTTActivity extends Activity implements OnClickListener{
     protected void onDestroy() {
     	// TODO Auto-generated method stub
     	super.onDestroy();
+    	EventBus.getDefault().post(new CommonEvent.UINotActiveEvent());
     	timer.cancel();
     	timer.purge();
     	timer=null;
@@ -282,21 +327,28 @@ public class MQTTActivity extends Activity implements OnClickListener{
 			
 		});
     	listChat.setAdapter(adapter);
-    	handler.postDelayed((new Runnable() {
-			
-			@Override
-			public void run() {
-				// TODO Auto-generated method stub
-				if(CommonUtil.isNetworkAvailable(MQTTActivity.this))
-				{
-					connect();
-				}else
-				{
-					toast("No network available");
-				}
-				
-			}
-		}),1000);
+//    	handler.postDelayed((new Runnable() {
+//			
+//			@Override
+//			public void run() {
+//				// TODO Auto-generated method stub
+//				if(CommonUtil.isNetworkAvailable(MQTTActivity.this))
+//				{
+//					connect();
+//				}else
+//				{
+//					toast("No network available");
+//				}
+//				
+//			}
+//		}),1000);
+    	Intent startService=new Intent(this,MQTTService.class);
+    	startService.setAction(Constants.SERVICE_ACTIONs.NEWCREATE.toString());
+    	Bundle bundle=new Bundle();
+    	bundle.putString("client_id", clientId);
+    	bundle.putString("topic_name", "AndroidGroup");
+    	startService.putExtras(bundle);
+    	startService(startService);
     }
     private void renewListChat()
     {
@@ -347,7 +399,7 @@ public class MQTTActivity extends Activity implements OnClickListener{
 	
 	private void connect()
 	{
-		Log.e("Connect","Connecting...");
+		Log.e("ActivityConnect","Connecting...");
 		mqtt.setClientId(clientId);
 		sUserName="khanh";
 		sPassword="khanh";
@@ -411,7 +463,7 @@ public class MQTTActivity extends Activity implements OnClickListener{
 			}
 			else
 			{
-				toast("Not Connected");
+//				toast("Not Connected");
 			}
 		}
 		catch(Exception e)

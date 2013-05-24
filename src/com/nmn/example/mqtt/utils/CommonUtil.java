@@ -7,8 +7,26 @@ import java.util.Locale;
 import android.content.Context;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
+import android.os.Environment;
 
 public class CommonUtil {
+public static boolean isSDCardPresent() {
+
+	return Environment.getExternalStorageState().equals(
+			Environment.MEDIA_MOUNTED);
+}
+public static String getFilePath()
+{
+	if(isSDCardPresent())
+	{
+		return Environment.getExternalStorageDirectory().getAbsolutePath() + "/com/appstorevngp/vn/chat/logs";
+	}else
+	{
+		return Environment.getDataDirectory().getAbsolutePath()+"/"+"com/appstorevngp/vn"+"/chat/logs";
+	}
+	
+}
+
 public static String getCurrentDate()
 {
 	String pattern = "dd-MM-yyyy HH:mm:ss";

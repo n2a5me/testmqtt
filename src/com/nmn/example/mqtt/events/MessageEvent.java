@@ -1,4 +1,4 @@
-package com.nmn.example.mqtt.model;
+package com.nmn.example.mqtt.events;
 
 public class MessageEvent {
 private String message;
