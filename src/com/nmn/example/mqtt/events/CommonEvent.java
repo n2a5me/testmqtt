@@ -8,4 +8,5 @@ public class CommonEvent {
 	public static class FailJoinToicEvent{}
 	public static class UINotActiveEvent{}
 	public static class UIActiveEvent{}
+	public static class PingSuccesEvent{}
 }

@@ -4,6 +4,9 @@ public class Constants {
 public static enum SERVICE_ACTIONs
 	{
 		NEWCREATE,
-		START_TOPIC
+		START_TOPIC,
+		RESET_COUNTER,
+		PING,
+		SUBCRIBE
 	}
 }

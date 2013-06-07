@@ -3,6 +3,8 @@
     android:layout_width="fill_parent"
     android:layout_height="fill_parent"
     android:background="#008B8B"
+    android:focusable="true"
+    android:focusableInTouchMode="true"
     android:orientation="vertical" >
 
     <ScrollView
@@ -28,8 +30,8 @@
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:gravity="center_vertical"
-                    android:text="AndroidGroup"
-                    android:hint="Input Topic name" />
+                    android:hint="Input Topic name"
+                    android:text="AndroidGroup" />
 
                 <Button
                     android:id="@+id/setTopic"

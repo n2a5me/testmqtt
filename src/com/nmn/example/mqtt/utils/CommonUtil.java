@@ -1,8 +1,14 @@
 package com.nmn.example.mqtt.utils;
 
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.Locale;
+
+import org.fusesource.mqtt.client.QoS;
+import org.fusesource.mqtt.client.Topic;
+
+import com.nmn.example.mqtt.model.ChatTopic;
 
 import android.content.Context;
 import android.net.ConnectivityManager;
@@ -39,9 +45,14 @@ public static String getCurrentDate()
     }
     return datetime;
 }
+public static String getCurrentDateShort(String fullDate)
+{
+	fullDate=fullDate.substring(10, fullDate.length());
+   return fullDate;
+}
 public static String convertMessage(String clientId,String message)
 {
-	return clientId+"~#@#~"+message;
+	return clientId+"~#@#~"+message+"~#@#~"+getCurrentDate();
 }
 public static String convertMessage4Emoticon(String clientId,String message,int indexOfEmoGroup)
 {
@@ -54,6 +65,14 @@ public static boolean isEmo(String message)
 public static String extractMessage(String message,boolean getMessage)
 {
 	return getMessage? message.split("~#@#~")[1]:message.split("~#@#~")[0];
+}
+public static String extractDateMessage(String message)
+{
+	String msg = "";
+	try{
+		msg=message.split("~#@#~")[2];
+	}catch(Exception ex){}
+	return msg;
 }
 public static String extractEmoMessage(String message,boolean getGroup)
 {
@@ -78,4 +97,14 @@ public static boolean isNetworkAvailable(Context context) {
 	}
 	return false;
 }
+public static Topic[] getTopicArr(ArrayList<ChatTopic> topics)
+	{
+		int size=topics.size();
+		Topic[] _topics=new Topic[size];
+		for(int i=0;i<size;i++)
+		{
+			_topics[i]=new Topic(topics.get(i).getTopicId(), QoS.AT_LEAST_ONCE);
+		}
+		return _topics;
+	}
 }

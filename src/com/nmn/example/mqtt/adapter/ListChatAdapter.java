@@ -13,40 +13,41 @@ import android.widget.RelativeLayout;
 import android.widget.TextView;
 
 import com.nmn.example.mqtt.R;
+import com.nmn.example.mqtt.model.ChatTopic;
 import com.nmn.example.mqtt.model.User;
+import com.nmn.example.mqtt.utils.CommonUtil;
+import com.readystatesoftware.viewbadger.BadgeView;
 
 
 public class ListChatAdapter extends BaseAdapter {
 	public ListChatAdapter(Context context,
-			ArrayList<User> users,String clientId) {
+			ArrayList<ChatTopic> topics) {
 		super();
-		this.clientId=clientId;
 		this.context = context;
-		this.users = users;
+		this.topics = topics;
 	}
 	
-	public ArrayList<User> getUsers() {
-		return users;
+	public ArrayList<ChatTopic> getUsers() {
+		return topics;
 	}
 
-	public void setUsers(ArrayList<User> users) {
-		this.users = users;
+	public void setUsers(ArrayList<ChatTopic> topics) {
+		this.topics = topics;
 	}
 
-	private ArrayList<User> users;
+	private ArrayList<ChatTopic> topics;
 	private Context context;
-	private String clientId;
 
 	@Override
 	public int getCount() {
 //		Log.e("Ranking", "total users:"+users.size());
-		return users.size();
+		return topics.size();
 	}
 
 	@Override
-	public User getItem(int position) {
+	public ChatTopic getItem(int position) {
 
-		return users.get(position);
+		return topics.get(position);
 	}
 
 	@Override
@@ -58,52 +59,62 @@ public class ListChatAdapter extends BaseAdapter {
 	public View getView(int position, View convertView, ViewGroup parent) {
 		ViewHolder viewHolder = null;
 		if (convertView == null) {
-			convertView = LayoutInflater.from(context).inflate(R.layout.chat_item, null);
+			convertView = LayoutInflater.from(context).inflate(R.layout.chat_center_item, null);
 			viewHolder = new ViewHolder();
-			viewHolder.username = (TextView) convertView
-					.findViewById(R.id.username);
-			viewHolder.content = (TextView) convertView
-					.findViewById(R.id.content);
+			viewHolder.groupName = (TextView) convertView
+					.findViewById(R.id.groupName);
+			viewHolder.lastMessageContent = (TextView) convertView
+					.findViewById(R.id.lastMessageContent);
+			viewHolder.topicId = (TextView) convertView
+					.findViewById(R.id.topicId);
 			viewHolder.datetime = (TextView) convertView
 					.findViewById(R.id.datetime);
-			viewHolder.layout = (RelativeLayout) convertView
-					.findViewById(R.id.layout);
-			viewHolder.emo = (ImageView) convertView
-					.findViewById(R.id.emo);
+			viewHolder.groupAvatar = (ImageView) convertView
+					.findViewById(R.id.groupAvatar);
+			viewHolder.lastMessageIcon = (ImageView) convertView
+					.findViewById(R.id.lastMessageIcon);
+			viewHolder.ripbonAnchor = (ImageView) convertView
+					.findViewById(R.id.ripbonAnchor);
+			viewHolder.badge=new BadgeView(context, viewHolder.ripbonAnchor);
 			convertView.setTag(viewHolder);
 		} else {
 			viewHolder = (ViewHolder) convertView.getTag();
 		}
 //		Log.e("RankingPosition", position+"");
-		//viewHolder.username.setText(users.get(position).getName());
-		if(users.get(position).getName().equalsIgnoreCase(clientId))
-				{
-					viewHolder.layout.setBackgroundResource(R.drawable.bgcolor);
-					viewHolder.username.setText("Me");
-				}else
-				{
-					viewHolder.layout.setBackgroundResource(R.drawable.transparent_bg);
-					viewHolder.username.setText(users.get(position).getName());
-				}
-		if(users.get(position).isSentEmo())
-		{
-			viewHolder.emo.setImageResource(users.get(position).getEmoResource());
-			viewHolder.emo.setVisibility(View.VISIBLE);
-			viewHolder.content.setVisibility(View.GONE);
-		}else
-		{
-			viewHolder.content.setText(users.get(position).getMessage());
-			viewHolder.emo.setVisibility(View.GONE);
-			viewHolder.content.setVisibility(View.VISIBLE);
-		}
-		viewHolder.datetime.setText(users.get(position).getDatetime());
+			viewHolder.groupAvatar.setImageResource(R.drawable.matrix_icon);
+			viewHolder.groupName.setText(topics.get(position).getTopicId());
+			viewHolder.datetime.setText(topics.get(position).getTimeOflastMessage());
+			if(topics.get(position).isLastMessageIcon())
+			{
+				viewHolder.lastMessageIcon.setVisibility(View.VISIBLE);
+				viewHolder.lastMessageIcon.setImageResource(topics.get(position).getLastMessageIcon());
+				viewHolder.lastMessageContent.setVisibility(View.INVISIBLE);
+			}else
+			{
+				viewHolder.lastMessageContent.setVisibility(View.VISIBLE);
+				viewHolder.lastMessageIcon.setVisibility(View.INVISIBLE);
+				viewHolder.lastMessageContent.setText(topics.get(position).getLastMessage());
+			}
+			if(topics.get(position).isReceivedNewMessag())
+			{
+				viewHolder.ripbonAnchor.setVisibility(View.VISIBLE);
+				viewHolder.badge.setText(topics.get(position).getNumOfNewMessages()+"");
+				viewHolder.badge.show();
+				viewHolder.badge.setVisibility(View.VISIBLE);
+			}else
+			{
+				viewHolder.ripbonAnchor.setVisibility(View.INVISIBLE);
+				viewHolder.badge.setVisibility(View.INVISIBLE);
+			}
+			
+			
 		return convertView;
 	}
 
 	public class ViewHolder {
-		TextView username,content,datetime;
-		ImageView emo;
-		RelativeLayout layout;
+		TextView groupName,lastMessageContent,topicId,datetime;
+		ImageView groupAvatar,lastMessageIcon,ripbonAnchor;
+		BadgeView badge;
 	}
 
 }

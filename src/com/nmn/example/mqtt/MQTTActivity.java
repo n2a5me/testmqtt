@@ -1,5 +1,9 @@
 package com.nmn.example.mqtt;
 
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
+import java.io.IOException;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.Timer;
@@ -25,21 +29,24 @@ import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.View;
 import android.view.View.OnClickListener;
+import android.view.Window;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.AdapterView;
 import android.widget.AdapterView.OnItemClickListener;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.GridView;
+import android.widget.ImageView;
 import android.widget.ListView;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import com.nmn.example.mqtt.adapter.EmoticonsAdapter;
-import com.nmn.example.mqtt.adapter.ListChatAdapter;
+import com.nmn.example.mqtt.adapter.RoomChatAdapter;
 import com.nmn.example.mqtt.events.CommonEvent;
 import com.nmn.example.mqtt.events.MessageEvent;
 import com.nmn.example.mqtt.events.ReceivedMessageEvent;
+import com.nmn.example.mqtt.model.ChatTopic;
 import com.nmn.example.mqtt.model.User;
 import com.nmn.example.mqtt.utils.CommonUtil;
 import com.nmn.example.mqtt.utils.Constants;
@@ -53,10 +60,9 @@ public class MQTTActivity extends Activity implements OnClickListener{
 	EditText destinationET = null;
 	EditText messageET = null;
 	private Button setTopic=null;
-	TextView receiveEditText=null;
 	Button sendButton = null;
 	private ListView listChat;
-	private ListChatAdapter adapter=null;
+	private RoomChatAdapter adapter=null;
 	private ProgressDialog progressDialog = null;
 	private Handler handler;
 	String sAddress = "tcp://mqtt.appota.com:1883";
@@ -71,13 +77,25 @@ public class MQTTActivity extends Activity implements OnClickListener{
 	private FutureConnection connection = null;
 	private Button more;
 	private boolean boughtStickyDefault=true;
-	private boolean backConfirm=false;
-	
+	private boolean customTitleSupported;
+	private boolean isLastMsgIcon=false;
+	private int lastMsgIcon;
+	private String lastMsg;
+	private boolean sentNewMessage=false;
     /** Called when the activity is first created. */
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        Log.e("OnActivityCreate","On Create...");
+        customTitleSupported = requestWindowFeature(Window.FEATURE_CUSTOM_TITLE);
         setContentView(R.layout.main);
+        if ( customTitleSupported ) {
+        	Log.e("SupportCustom","true");
+            getWindow().setFeatureInt(Window.FEATURE_CUSTOM_TITLE, R.layout.title_header);
+            }else
+            {
+            	Log.e("SupportCustom","false");
+            }
         handler=new Handler();
         users=new ArrayList<User>();
         mqtt = new MQTT();
@@ -92,24 +110,23 @@ public class MQTTActivity extends Activity implements OnClickListener{
 			      (UUID.randomUUID().toString())).trim().replace('-', '_');
         	Log.e("getClientIdFromApplication","N/A");
         }
-        adapter=new ListChatAdapter(this, users, clientId);
+        adapter=new RoomChatAdapter(this, users, clientId);
         setupView();
         timer=new Timer();
-//        timer.schedule(new TimerTask() {
-//			
-//			@Override
-//			public void run() {
-//				// TODO Auto-generated method stub
-//				checkMessages();
-//			}
-//		}, 1000,1000);
+        timer.schedule(new TimerTask() {
+			
+			@Override
+			public void run() {
+				// TODO Auto-generated method stub
+				connectToService(null, Constants.SERVICE_ACTIONs.PING.toString());
+			}
+		}, 3000,3000);
     }
     
     @Override
     public void onPause()
     {
     	super.onPause();
-    	EventBus.getDefault().post(new CommonEvent.UINotActiveEvent());
     	EventBus.getDefault().unregister(this);
     	disconnect();
     }
@@ -118,28 +135,9 @@ public class MQTTActivity extends Activity implements OnClickListener{
     	// TODO Auto-generated method stub
     	super.onResume();
     	EventBus.getDefault().register(this);
-//		if(connection!=null)
-//		{
-//			if(!connection.isConnected())
-//			{
-//				handler.post(new Runnable() {
-//					
-//					@Override
-//					public void run() {
-//						// TODO Auto-generated method stub
-//						connect();
-//					}
-//				});
-//				
-//			}
-//		}else
-//		{
-//			connection = mqtt.futureConnection();
-//			return;
-//		}
 //    	retryConnect();
-    	EventBus.getDefault().post(new CommonEvent.UIActiveEvent());
-    	Log.e("OnResume","On resume...");
+    	Log.e("OnActivityResume","On resume...");
+    	
     }
     @Override
     public void onBackPressed() {
@@ -147,67 +145,121 @@ public class MQTTActivity extends Activity implements OnClickListener{
     	if(gridEmoticons.isShown())
     	{
     		more.performClick();
-    		return;
     	}
-    	if(!backConfirm)
-    	{
-    		backConfirm=true;
-    		toast("Click back again to exit");
-    		handler.postDelayed(new Runnable() {
-				
-				@Override
-				public void run() {
-					// TODO Auto-generated method stub
-					backConfirm=false;
-				}
-			}, 3000);
-    	}else
-    	{
-    		finish();
-    	}
+    	super.onBackPressed();
     }
     public void onEventMainThread(MessageEvent event){
 		Log.e("onEventMainThread", "Here");
 		sMessage=CommonUtil.convertMessage4Emoticon(clientId, event.getMessage(), event.getGroup());
-		sendEmoticon();
-//		handler.postDelayed(new Runnable() {
-//			
-//			@Override
-//			public void run() {
-//				// TODO Auto-generated method stub
-//				more.performClick();
-//			}
-//		}, 500);
+		try {
+			sendEmoticon();
+		} catch (Exception e) {
+			toast("Unable to send message");
+		}
 	}
+    public void onEventMainThread(CommonEvent.FailConnectEvent event)
+    {
+        headerFail();
+    }
+
+	private void headerFail() {
+        ImageView myConnectIcon = (ImageView) findViewById(R.id.connectIcon);
+        if(myConnectIcon!=null)
+        {
+        	if(customTitleSupported)
+        	{
+        		myConnectIcon.setImageResource(R.drawable.not_connected);
+        	}
+        	
+        }
+	}
+    public void onEventMainThread(CommonEvent.PingSuccesEvent event)
+    {
+        headerSuccess();
+    }
     public void onEventMainThread(CommonEvent.SuccessConnectEvent event)
     {
-    	Intent startService=new Intent(this,MQTTService.class);
-    	startService.setAction(Constants.SERVICE_ACTIONs.START_TOPIC.toString());
+    	headerSuccess();
     	Bundle bundle=new Bundle();
     	bundle.putString("topic_name", sTOPIC);
-    	startService.putExtras(bundle);
-    	startService(startService);
+    	connectToService(bundle, Constants.SERVICE_ACTIONs.START_TOPIC.toString());
     }
     public void onEventMainThread(ReceivedMessageEvent event){
 		Log.e("onEventMainThread", "ReceivedMessageEvent");
-		String messagePayLoad=event.getMes();
-		User userItem=new User();
-		userItem.setName(CommonUtil.extractMessage(messagePayLoad, false));
-		userItem.setDatetime(CommonUtil.getCurrentDate());
-		
-		if(CommonUtil.isEmo(messagePayLoad))
+		headerSuccess();
+		if(event.getTid().equals(sTOPIC))
 		{
-			userItem.setSentEmo(true);
-			userItem.setEmoResource(Integer.parseInt(CommonUtil.extractEmoMessage(messagePayLoad, false)));
-			userItem.setEmoGroup(Integer.parseInt(CommonUtil.extractEmoMessage(messagePayLoad, true)));
-			userItem.setMessage(messagePayLoad);
+			String messagePayLoad=event.getMes();
+			User userItem=new User();
+			userItem.setName(CommonUtil.extractMessage(messagePayLoad, false));
+			userItem.setDatetime(CommonUtil.extractDateMessage(messagePayLoad));
+			if(CommonUtil.isEmo(messagePayLoad))
+			{
+				userItem.setSentEmo(true);
+				userItem.setEmoResource(Integer.parseInt(CommonUtil.extractEmoMessage(messagePayLoad, false)));
+				userItem.setEmoGroup(Integer.parseInt(CommonUtil.extractEmoMessage(messagePayLoad, true)));
+				userItem.setMessage(messagePayLoad);
+				lastMsgIcon=userItem.getEmoResource();
+				isLastMsgIcon=true;
+			}else
+			{
+				userItem.setMessage(CommonUtil.extractMessage(messagePayLoad, true));
+				lastMsg=userItem.getMessage();
+			}
+			users.add(userItem);
+			adapter.notifyDataSetChanged();
+			listChat.setSelection(users.size()-1);
 		}else
 		{
-			userItem.setMessage(CommonUtil.extractMessage(messagePayLoad, true));
+			Log.e("","Message received but to other topic.");
 		}
-		users.add(userItem);
-		adapter.notifyDataSetChanged();
-		listChat.setSelection(users.size()-1);
+		///Update the numbers of new messages
+		UIApplication myApp=(UIApplication)getApplication();
+		ArrayList<ChatTopic> topics=myApp.getTopics();
+		for(ChatTopic topic:topics)
+		{
+			if(topic.getTopicId().equals(event.getTid()))
+			{
+				topic.setNumOfNewMessages(topic.getNumOfNewMessages()+1);
+			}
+		}
+		///
+    	for (ChatTopic topic : topics) {
+			if(topic.getTopicId().equals(event.getTid()))
+			{
+				if(isLastMsgIcon)
+				{
+					topic.setLastMessageIcon(true);
+					topic.setLastMessageIcon(lastMsgIcon);
+				}else
+				{
+					topic.setLastMessageIcon(false);
+					topic.setLastMessage(lastMsg);
+				}
+				topic.setTimeOflastMessage(CommonUtil.getCurrentDate());
+				break;
+			}
+		}
+    	myApp.setTopics(topics);
+	}
+
+	private void headerSuccess() {
+		TextView myTitleText = (TextView) findViewById(R.id.headerTitle);
+        if ( myTitleText != null ) {
+        	if(customTitleSupported)
+        	{
+        		myTitleText.setText("Appota Chat : "+sTOPIC);// myTitleText.setBackgroundColor(Color.GREEN);
+        	}
+        }
+        ImageView myConnectIcon = (ImageView) findViewById(R.id.connectIcon);
+        if(myConnectIcon!=null)
+        {
+        	if(customTitleSupported)
+        	{
+        		myConnectIcon.setImageResource(R.drawable.connected);
+        	}
+        	
+        }
 	}
 	public void retryConnect() {
 		mqtt = new MQTT();
@@ -242,11 +294,11 @@ public class MQTTActivity extends Activity implements OnClickListener{
     @Override
     protected void onDestroy() {
     	// TODO Auto-generated method stub
-    	super.onDestroy();
-    	EventBus.getDefault().post(new CommonEvent.UINotActiveEvent());
     	timer.cancel();
     	timer.purge();
     	timer=null;
+    	super.onDestroy();
+    	
     }
     public void setupView()
     {
@@ -268,10 +320,15 @@ public class MQTTActivity extends Activity implements OnClickListener{
 				}else
 				{
 					gridEmoticons.setVisibility(View.VISIBLE);
+					InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+					imm.hideSoftInputFromWindow(messageET.getWindowToken(), 0);
+					imm.hideSoftInputFromWindow(destinationET.getWindowToken(), 0);
 					more.setText("-");
 				}
 			}
 		});
+    	Intent receivedIntent=getIntent();
+    	destinationET.setText(receivedIntent.getExtras().getString("topic_name"));
     	sTOPIC = destinationET.getText().toString().trim();
     	sendButton.setOnClickListener(this);
     	gridEmoticons = (GridView) findViewById(R.id.gridEmoticons);
@@ -291,14 +348,39 @@ public class MQTTActivity extends Activity implements OnClickListener{
 					{
 						return;
 					}
-					connection.unsubscribe(new String[]{sTOPIC});
+					final String preTopic=sTOPIC; 
 					sTOPIC=destinationET.getText().toString().trim();
 					destinationET.setText(sTOPIC);
 					Topic[] topics = {new Topic(sTOPIC, QoS.AT_LEAST_ONCE)};
+					if(!connection.isConnected())
+					{
+						connect();
+					}
+					Log.e("SubscribeTopic", "Subscribing new topic..");
 					connection.subscribe(topics).then(onui(new Callback<byte[]>() {
 						public void onSuccess(byte[] subscription) {
+							connection.unsubscribe(new String[]{preTopic});
 							toast("Joined the group!");
 							renewListChat();
+					    	connectToService(null, Constants.SERVICE_ACTIONs.START_TOPIC.toString());
+					    	boolean newTopic=true;
+					    	UIApplication myApp=(UIApplication)getApplication();
+					    	ArrayList<ChatTopic> topics=myApp.getTopics();
+					    	for (ChatTopic topic : topics) {
+								if(topic.getTopicId().equals(sTOPIC))
+								{
+									newTopic=false;
+									break;
+								}
+							}
+					    	if(newTopic)
+					    	{
+					    		ChatTopic topic=new ChatTopic();
+					    		topic.setTopicId(sTOPIC);
+					    		topic.setTopicName(sTOPIC);
+					    		topics.add(topic);
+					    		myApp.setTopics(topics);
+					    	}
 						}
 						public void onFailure(Throwable e) {
 							Log.e(TAG, "Exception sending message: " + e);
@@ -310,7 +392,6 @@ public class MQTTActivity extends Activity implements OnClickListener{
 				}
 			}
 		});
-    	receiveEditText=(TextView)findViewById(R.id.receiveEditText);
     	listChat=(ListView)findViewById(R.id.listChat);
     	listChat.setOnItemClickListener(new OnItemClickListener() {
 
@@ -321,39 +402,86 @@ public class MQTTActivity extends Activity implements OnClickListener{
 				InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
 				imm.hideSoftInputFromWindow(messageET.getWindowToken(), 0);
 				imm.hideSoftInputFromWindow(destinationET.getWindowToken(), 0);
-				
 			}
-
-			
 		});
     	listChat.setAdapter(adapter);
+    	//read file
+	    	String filePath=null;
+			filePath=CommonUtil.getFilePath();
+			String filename=sTOPIC+".ca";
+		
+			Log.e("Start Reading H-file", filePath+"/"+filename);
+			BufferedReader buff=null;
+			try {
+				File codefile = new File(filePath+"/"+filename);
+				boolean isHistoryOfChatAvailable = false;
+				isHistoryOfChatAvailable=codefile.exists();
+				if(isHistoryOfChatAvailable)
+				{
+					FileReader writer = new FileReader(codefile);
+					buff=new BufferedReader(writer);
+					String messagePayLoad;
+					while ((messagePayLoad = buff.readLine()) != null) {
+						if(!messagePayLoad.contains("~#@#~"))
+						{
+							continue;
+						}
+						User userItem=new User();
+						userItem.setName(CommonUtil.extractMessage(messagePayLoad, false));
+						userItem.setDatetime(CommonUtil.extractDateMessage(messagePayLoad));
+						if(CommonUtil.isEmo(messagePayLoad))
+						{
+							userItem.setSentEmo(true);
+							userItem.setEmoResource(Integer.parseInt(CommonUtil.extractEmoMessage(messagePayLoad, false)));
+							userItem.setEmoGroup(Integer.parseInt(CommonUtil.extractEmoMessage(messagePayLoad, true)));
+							userItem.setMessage(messagePayLoad);
+						}else
+						{
+							userItem.setMessage(CommonUtil.extractMessage(messagePayLoad, true));
+						}
+						users.add(userItem);
+						adapter.notifyDataSetChanged();
+						listChat.setSelection(users.size()-1);
+					}
+				}
+		       
+			}catch (IOException e) {
+				Log.e("Read file", "File read failed: " + e.toString());
+			}
+		    finally {
+				try {
+					if (buff != null)buff.close();
+				} catch (IOException ex) {
+					ex.printStackTrace();
+				}
+			}
+    	///
 //    	handler.postDelayed((new Runnable() {
 //			
 //			@Override
 //			public void run() {
 //				// TODO Auto-generated method stub
-//				if(CommonUtil.isNetworkAvailable(MQTTActivity.this))
-//				{
-//					connect();
-//				}else
-//				{
-//					toast("No network available");
-//				}
-//				
+//				connectToService(null, Constants.SERVICE_ACTIONs.PING.toString());
 //			}
 //		}),1000);
-    	Intent startService=new Intent(this,MQTTService.class);
-    	startService.setAction(Constants.SERVICE_ACTIONs.NEWCREATE.toString());
     	Bundle bundle=new Bundle();
-    	bundle.putString("client_id", clientId);
-    	bundle.putString("topic_name", "AndroidGroup");
-    	startService.putExtras(bundle);
-    	startService(startService);
+    	bundle.putString("topic_name", sTOPIC);
+    	connectToService(bundle, Constants.SERVICE_ACTIONs.START_TOPIC.toString());
+    }
+    private void connectToService(Bundle bundle,String action)
+    {
+    	Intent startServiceIntent=new Intent(this,MQTTService.class);
+    	startServiceIntent.setAction(action);
+    	if(bundle!=null)
+    	{
+    		startServiceIntent.putExtras(bundle);
+    	}
+    	startService(startServiceIntent);
     }
     private void renewListChat()
     {
     	users=new ArrayList<User>();
-    	adapter=new ListChatAdapter(this, users, clientId);
+    	adapter=new RoomChatAdapter(this, users, clientId);
     	listChat.setAdapter(adapter);
     }
 	public void onClick(View v) {
@@ -372,7 +500,11 @@ public class MQTTActivity extends Activity implements OnClickListener{
 				toast("What's was that :-P");
 			}else
 			{
-				send();
+				try {
+					send();
+				} catch (Exception e) {
+					toast("Unable to send message");
+				}
 			}
 		}
 	}
@@ -429,18 +561,23 @@ public class MQTTActivity extends Activity implements OnClickListener{
 		progressDialog = ProgressDialog.show(this, "", 
                 "Connecting...", false);
 		progressDialog.setCancelable(false);
-		connection.connect().then(onui(new Callback<Void>(){
-			public void onSuccess(Void value) {
-				progressDialog.dismiss();
-//				sendButton.setEnabled(true);
-				toast("Connected");
-			}
-			public void onFailure(Throwable e) {
-				toast("Problem connecting to host");
-				Log.e(TAG, "Exception connecting to " + sAddress + " - " + e);
-				progressDialog.dismiss();
-			}
-		}));
+		try {
+			connection.connect().then(onui(new Callback<Void>(){
+				public void onSuccess(Void value) {
+					progressDialog.dismiss();
+//					sendButton.setEnabled(true);
+					Log.e("Re-Connect", "re-connect sucessful!");
+				}
+				public void onFailure(Throwable e) {
+					toast("Problem connecting to host");
+					Log.e(TAG, "Exception connecting to " + sAddress + " - " + e);
+					Log.e("Re-Connect", "re-connect failed.");
+					progressDialog.dismiss();
+				}
+			}));
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
 
 	}
 	
@@ -453,7 +590,7 @@ public class MQTTActivity extends Activity implements OnClickListener{
 				connection.disconnect().then(onui(new Callback<Void>(){
 					public void onSuccess(Void value) {
 //						sendButton.setEnabled(false);
-						toast("Disconnected");
+						Log.e("Disconnected","onPause");
 					}
 					public void onFailure(Throwable e) {
 						toast("Problem disconnecting");
@@ -490,12 +627,15 @@ public class MQTTActivity extends Activity implements OnClickListener{
 				Topic[] topics = {new Topic(sTOPIC, QoS.AT_LEAST_ONCE)};
 				connection.subscribe(topics).then(onui(new Callback<byte[]>() {
 					public void onSuccess(byte[] subscription) {
-						Log.d(TAG, "TOPIC: " + sTOPIC);
-						Log.d(TAG, "Message: " + sMessage);
+						Log.e(TAG, "TOPIC: " + sTOPIC);
+						Log.e(TAG, "Message: " + sMessage);
 						// publish message
 						String cMessage=CommonUtil.convertMessage(clientId, sMessage);
 						connection.publish(sTOPIC, cMessage.getBytes(), QoS.AT_LEAST_ONCE, false);
 //						TOPICET.setText("");
+						sentNewMessage=true;
+						isLastMsgIcon=false;
+						lastMsg=CommonUtil.extractMessage(cMessage, true);
 						messageET.setText("");
 						toast("Message sent");
 					}
@@ -533,6 +673,10 @@ public class MQTTActivity extends Activity implements OnClickListener{
 						Log.d(TAG, "Message Emo: " + sMessage);
 						// publish message
 						connection.publish(sTOPIC, sMessage.getBytes(), QoS.AT_LEAST_ONCE, false);
+						isLastMsgIcon=true;
+						lastMsgIcon=Integer.parseInt(CommonUtil.extractEmoMessage(sMessage, false));
+						sentNewMessage=true;
+						messageET.setText("");
 //						TOPICET.setText("");
 //						toast("Emoticon sent");
 					}
